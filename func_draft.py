@@ -3,7 +3,8 @@ from pycbc.detector import add_detector_on_earth, Detector
 from pycbc.distributions.utils import draw_samples_from_config
 from pycbc.filter import matched_filter, sigma, resample_to_delta_t, highpass
 from pycbc.psd import from_txt
-from pycbc.waveform import get_fd_waveform, get_td_waveform
+from pycbc.waveform import get_fd_waveform, get_td_waveform, get_td_waveform_from_fd
+from pycbc.waveform.spa_tmplt import findchirp_chirptime
 from lunarsky import MoonLocation, MCMF
 from astropy import coordinates, constants
 from astropy.coordinates.matrix_utilities import rotation_matrix
@@ -216,7 +217,6 @@ def antenna_pattern(self, ra, dec, polarization, obstime,
                 fl = (z * dz).sum()
             return fb, fl
 
-
 ##########################################################################################
 
 lunar_det_lat = [-(np.pi / 2)]  # Scalar (insert rad)
@@ -250,14 +250,28 @@ apx = "TaylorF2"
 f_lower_LILA = 0.25 #lower bound on frequency sensitivity for LILA and CE
 f_final_LILA = 2
 
+t_lower_LILA = 60 * 60 * 24 * 60 #2 months (60 days) pre-merger
+t_final_LILA = 60 * 60 * 24 #1 day pre-merger
+
 mass1 = 1.4
 mass2 = 1.4
+tc = findchirp_chirptime(m1=mass1, m2=mass2, fLower=f_lower_LILA, porder=7)
+mass_kg = mass1 * 1.989 * (10**30)
+
+chirp_mass = ((mass_kg*mass_kg)**(3/5))/((mass_kg+mass_kg)**(1/5))
+f_lower_t_lower = ((((8*np.pi)**(8/3))/5)*(((constants.G.value*chirp_mass)/(constants.c.value**3))**(5/3))*(tc-t_lower_LILA))**(-3/8)
+f_final_t_final = ((((8*np.pi)**(8/3))/5)*(((constants.G.value*chirp_mass)/(constants.c.value**3))**(5/3))*(tc-t_final_LILA))**(-3/8)
+print(f_lower_t_lower, f_final_t_final)
+
+delta_t_LILA = 2 * f_final_t_final
+print(delta_t_LILA)
+
 distance = 1000
 inclination = 0.1
+duration = tc - t_final_LILA
 
 hp_LILA, hc_LILA = get_td_waveform(approximant=apx, mass1=mass1,
-                                            mass2=mass2, f_lower=f_lower_LILA, f_final=f_final_LILA, delta_t=0.25,
-                                            inclination=inclination, distance=distance)
+                                            mass2=mass2, f_lower=f_lower_t_lower, f_final = f_final_t_final, delta_t=delta_t_LILA,
+                                            inclination=inclination, distance=distance, duration=duration)
 
-##########################################################################################
 
