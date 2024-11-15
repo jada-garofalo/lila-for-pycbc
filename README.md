@@ -3,7 +3,8 @@ Welcome! This is an active repo containing the progress for lila_for_pycbc, an a
 
 Please see func_draft.py for a snapshot into the latest functions I've written for the project [and please ignore my little incomplete sanity checks at the bottom lol].
 
-## abstract
+## Abstract for progress presentation "Adapting PyCBC for Python to analyze the efficacy of the Laser Interferometer Lunar Antenna proposal"
+
 In 1916, along with his formulation of general relativity, Albert Einstein predicted the existence of gravitational waves that carry energy in the form of radiation, akin to electromagnetic radiation. These waves propagate from high-mass, high-acceleration systems like binary black hole (BBH) and binary neutron star (BNS) systems and contract or expand the distance between two objects in space.
 
 The Laser Interferometer Lunar Antenna (LILA) is a proposed gravitational wave detector that would be stationed on the lunar surface. As opposed to current Earth-based detectors like LIGO, this next-generation detector would cover the decihertz frequency band and in turn provide crucial insight into the early evolution of BNS mergers.
