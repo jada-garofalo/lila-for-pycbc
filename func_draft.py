@@ -1,3 +1,4 @@
+from scipy.interpolate import interp1d
 from pycbc.catalog import Merger
 from pycbc.detector import add_detector_on_earth, Detector
 from pycbc.distributions.utils import draw_samples_from_config
@@ -48,6 +49,7 @@ def obstimes_array(s_obstime, t_obstime, r_obstime):
 def time_delay(observation_times, msp, ra, dec, frame):
     delays = []
     wave_direction = SkyCoord(ra=ra, dec=dec, frame=frame).represent_as(CartesianRepresentation).xyz #represents wave direction
+    #print("time_delay: wave direction completed")
     #lists time delays for positions in the sample array
     for obstime in observation_times:
         moon_pos = set_mspole_location(msp, obstime)
@@ -59,6 +61,22 @@ def time_delay(observation_times, msp, ra, dec, frame):
         distance_difference = (moon_proj_distance - bary_proj_distance) * u.m
         delay = distance_difference / (constants.c.value * u.m / u.s)
         delays.append(delay)
+    return delays
+
+def time_delay2(observation_times, msp, ra, dec, frame):
+    delays = []
+    wave_direction = SkyCoord(ra=ra, dec=dec, frame=frame).represent_as(CartesianRepresentation).xyz #represents wave direction
+    #print("time_delay: wave direction completed")
+    #lists time delays for positions in the sample array
+    
+    moon_pos = set_mspole_location(msp, observation_times)
+    bary_pos = CartesianRepresentation(0, 0, 0)
+
+    moon_proj_distance = np.dot(moon_pos.value.flatten(), wave_direction.value)
+    bary_proj_distance = np.dot(bary_pos.xyz.value.flatten(), wave_direction.value)
+
+    distance_difference = (moon_proj_distance - bary_proj_distance) * u.m
+    delays = distance_difference / (constants.c.value * u.m / u.s)
     return delays
 
 def add_detector_on_moon(name, longitude, latitude,
@@ -226,21 +244,6 @@ msp = MoonSurfacePoint(lunar_det_lat, lunar_det_lon, lunar_det_h) #create an ins
 
 ##########################################################################################
 
-s_obstime = Time('2024-01-25 01:50:30') #start time
-t_obstime = 1 * u.yr #1 year, total time
-r_obstime = 1 * u.d #1 day, rate
-
-observation_times = obstimes_array(s_obstime, t_obstime, r_obstime)
-
-##########################################################################################
-
-ra = 120 * u.deg #right ascension of source
-dec = 2 * u.deg #declination of source 
-frame = 'icrs' #ref frame for wave direction
-
-delays = time_delay(observation_times, msp, ra, dec, frame)
-
-##########################################################################################
 
 add_detector_on_moon("LILA", msp.lon, msp.lat, yangle=0, xlength=10000, ylength=10000)
 
@@ -261,10 +264,25 @@ mass_kg = mass1 * 1.989 * (10**30)
 chirp_mass = ((mass_kg*mass_kg)**(3/5))/((mass_kg+mass_kg)**(1/5))
 f_lower_t_lower = ((((8*np.pi)**(8/3))/5)*(((constants.G.value*chirp_mass)/(constants.c.value**3))**(5/3))*(tc-t_lower_LILA))**(-3/8)
 f_final_t_final = ((((8*np.pi)**(8/3))/5)*(((constants.G.value*chirp_mass)/(constants.c.value**3))**(5/3))*(tc-t_final_LILA))**(-3/8)
-print(f_lower_t_lower, f_final_t_final)
+#print(f_lower_t_lower, f_final_t_final)
 
 delta_t_LILA = 2 * f_final_t_final
-print(delta_t_LILA)
+#print(delta_t_LILA)
+
+s_obstime = Time('2024-01-25 01:50:30')  # start time
+t_obstime = (t_lower_LILA - t_final_LILA) * u.s # total observation time
+r_obstime = delta_t_LILA * u.s  # match observation rate to waveform's delta_t
+
+observation_times = obstimes_array(s_obstime, t_obstime, r_obstime)
+print(len(observation_times))
+print("obstimes array completed")
+
+ra = 120 * u.deg #right ascension of source
+dec = 2 * u.deg #declination of source 
+frame = 'icrs' #ref frame for wave direction
+
+delays = time_delay(observation_times, msp, ra, dec, frame)
+print("delays array completed")
 
 distance = 1000
 inclination = 0.1
@@ -273,5 +291,4 @@ duration = tc - t_final_LILA
 hp_LILA, hc_LILA = get_td_waveform(approximant=apx, mass1=mass1,
                                             mass2=mass2, f_lower=f_lower_t_lower, f_final = f_final_t_final, delta_t=delta_t_LILA,
                                             inclination=inclination, distance=distance, duration=duration)
-
-
+print("SSB waveform generation completed")
