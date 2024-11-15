@@ -63,22 +63,6 @@ def time_delay(observation_times, msp, ra, dec, frame):
         delays.append(delay)
     return delays
 
-def time_delay2(observation_times, msp, ra, dec, frame):
-    delays = []
-    wave_direction = SkyCoord(ra=ra, dec=dec, frame=frame).represent_as(CartesianRepresentation).xyz #represents wave direction
-    #print("time_delay: wave direction completed")
-    #lists time delays for positions in the sample array
-    
-    moon_pos = set_mspole_location(msp, observation_times)
-    bary_pos = CartesianRepresentation(0, 0, 0)
-
-    moon_proj_distance = np.dot(moon_pos.value.flatten(), wave_direction.value)
-    bary_proj_distance = np.dot(bary_pos.xyz.value.flatten(), wave_direction.value)
-
-    distance_difference = (moon_proj_distance - bary_proj_distance) * u.m
-    delays = distance_difference / (constants.c.value * u.m / u.s)
-    return delays
-
 def add_detector_on_moon(name, longitude, latitude,
                           yangle=0, xangle=None, height=0,
                           xlength=10000, ylength=10000,xaltitude=0, yaltitude=0):
