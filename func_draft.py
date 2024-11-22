@@ -41,6 +41,14 @@ def set_mspole_location(msp, obstime): #defines detector location in barycentric
     barycentric_coords = mcmf_skycoord.transform_to(BarycentricTrueEcliptic(equinox=obstime))
     return barycentric_coords.cartesian.xyz
 
+def set_mspole_location_eff(msp, obstimes):
+    location = MoonLocation.from_selenodetic(msp.lon, msp.lat, msp.h)
+    mcmf_xyz = location.mcmf.cartesian.xyz
+    mcmf_skycoords = SkyCoord(mcmf_xyz.T, frame=MCMF(obstime=obstimes))
+    barycentric_coords = mcmf_skycoords.transform_to(BarycentricTrueEcliptic(equinox=obstimes))
+    return barycentric_coords.cartesian.xyz  # Return barycentric positions as an array
+
+
 def obstimes_array(s_obstime, t_obstime, r_obstime):
     num_samples = int(t_obstime / r_obstime) #number of samples
     observation_times = s_obstime + np.arange(num_samples) * r_obstime #sample times array
@@ -53,14 +61,17 @@ def time_delay(observation_times, msp, ra, dec, frame):
     #lists time delays for positions in the sample array
     for obstime in observation_times:
         moon_pos = set_mspole_location(msp, obstime)
-        bary_pos = CartesianRepresentation(0, 0, 0)
-
-        moon_proj_distance = np.dot(moon_pos.value.flatten(), wave_direction.value)
-        bary_proj_distance = np.dot(bary_pos.xyz.value.flatten(), wave_direction.value)
-
-        distance_difference = (moon_proj_distance - bary_proj_distance) * u.m
+        distance_difference = np.dot(moon_pos.value.flatten(), wave_direction.value) * u.m
         delay = distance_difference / (constants.c.value * u.m / u.s)
         delays.append(delay)
+    return delays
+
+def time_delay_eff(observation_times, msp, ra, dec, frame):
+    delays = []
+    wave_direction = SkyCoord(ra=ra, dec=dec, frame=frame).represent_as(CartesianRepresentation).xyz #represents wave direction
+    moon_positions = moon_positions = set_mspole_location_eff(msp, observation_times).value  # shape: (N, 3)
+    distance_difference = np.dot(wave_direction, moon_positions) * u.m
+    delays = distance_difference / (constants.c.value * u.m / u.s)
     return delays
 
 def add_detector_on_moon(name, longitude, latitude,
@@ -265,7 +276,7 @@ ra = 120 * u.deg #right ascension of source
 dec = 2 * u.deg #declination of source 
 frame = 'icrs' #ref frame for wave direction
 
-delays = time_delay(observation_times, msp, ra, dec, frame)
+delays = time_delay_eff(observation_times, msp, ra, dec, frame)
 print("delays array completed")
 
 distance = 1000
@@ -276,3 +287,5 @@ hp_LILA, hc_LILA = get_td_waveform(approximant=apx, mass1=mass1,
                                             mass2=mass2, f_lower=f_lower_t_lower, f_final = f_final_t_final, delta_t=delta_t_LILA,
                                             inclination=inclination, distance=distance, duration=duration)
 print("SSB waveform generation completed")
+
+print(len(hp_LILA))
