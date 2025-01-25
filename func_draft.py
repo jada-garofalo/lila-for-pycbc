@@ -19,8 +19,6 @@ import pylab
 import h5py
 import lal
 
-##########################################################################################
-
 class MoonSurfacePoint: #calls position on the lunar surface
     def __init__(self, lunar_det_lat, lunar_det_lon, lunar_det_h):
         self.lat = Latitude(lunar_det_lat * u.rad)
@@ -33,13 +31,6 @@ def gmst_moon(obstime, s_obstime):
     elapsed_time = time_utc - s_obstime
     gmst_moon = 2 * np.pi * (elapsed_time % lunar_sidereal_period) / lunar_sidereal_period
     return gmst_moon
-
-def set_mspole_location(msp, obstime): #defines detector location in barycentric frame (for LILA case named south pole)
-    msp.location = MoonLocation.from_selenodetic(msp.lon, msp.lat, msp.h)
-    mcmf_xyz = msp.location.mcmf.cartesian.xyz
-    mcmf_skycoord = SkyCoord(mcmf_xyz, frame=MCMF(obstime=obstime))
-    barycentric_coords = mcmf_skycoord.transform_to(BarycentricTrueEcliptic(equinox=obstime))
-    return barycentric_coords.cartesian.xyz
 
 def set_mspole_location_eff(msp, obstimes):
     location = MoonLocation.from_selenodetic(msp.lon, msp.lat, msp.h)
@@ -54,22 +45,11 @@ def obstimes_array(s_obstime, t_obstime, r_obstime):
     observation_times = s_obstime + np.arange(num_samples) * r_obstime #sample times array
     return observation_times
 
-def time_delay(observation_times, msp, ra, dec, frame):
-    delays = []
-    wave_direction = SkyCoord(ra=ra, dec=dec, frame=frame).represent_as(CartesianRepresentation).xyz #represents wave direction
-    #print("time_delay: wave direction completed")
-    #lists time delays for positions in the sample array
-    for obstime in observation_times:
-        moon_pos = set_mspole_location(msp, obstime)
-        distance_difference = np.dot(moon_pos.value.flatten(), wave_direction.value) * u.m
-        delay = distance_difference / (constants.c.value * u.m / u.s)
-        delays.append(delay)
-    return delays
-
 def time_delay_eff(observation_times, msp, ra, dec, frame):
     delays = []
     wave_direction = SkyCoord(ra=ra, dec=dec, frame=frame).represent_as(CartesianRepresentation).xyz #represents wave direction
-    moon_positions = moon_positions = set_mspole_location_eff(msp, observation_times).value  # shape: (N, 3)
+    moon_positions = set_mspole_location_eff(msp, observation_times).value  # shape: (N, 3)
+    print(moon_positions)
     distance_difference = np.dot(wave_direction, moon_positions) * u.m
     delays = distance_difference / (constants.c.value * u.m / u.s)
     return delays
@@ -239,7 +219,6 @@ msp = MoonSurfacePoint(lunar_det_lat, lunar_det_lon, lunar_det_h) #create an ins
 
 ##########################################################################################
 
-
 add_detector_on_moon("LILA", msp.lon, msp.lat, yangle=0, xlength=10000, ylength=10000)
 
 ##########################################################################################
@@ -286,6 +265,7 @@ duration = tc - t_final_LILA
 hp_LILA, hc_LILA = get_td_waveform(approximant=apx, mass1=mass1,
                                             mass2=mass2, f_lower=f_lower_t_lower, f_final = f_final_t_final, delta_t=delta_t_LILA,
                                             inclination=inclination, distance=distance, duration=duration)
+
 print("SSB waveform generation completed")
 
 print(len(hp_LILA))
