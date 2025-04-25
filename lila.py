@@ -22,7 +22,7 @@ import lal
 '''
 PLEASE NOTE:
 
-THIS IS A WORK IN PROGRESS. PLEASE CONTACT JADA GAROFALO AT jagarofa@syr.edu FOR MORE INFORMATION. COMPLETE CLASS COMING SOON.
+THIS IS A WORK IN PROGRESS. PLEASE CONTACT JADA GAROFALO AT jagarofa@syr.edu FOR MORE INFORMATION. COMPLETE CLASS IS COMING SOON.
 
 <3 <3 <3
 '''
@@ -64,7 +64,6 @@ def set_mspole_location_eff(msp, obstimes):
     mcmf_skycoords = SkyCoord(mcmf_xyz.T, frame=MCMF(obstime=obstimes))
     barycentric_coords = mcmf_skycoords.transform_to(BarycentricTrueEcliptic(equinox=obstimes))
     return barycentric_coords.cartesian.xyz  # Return barycentric positions as an array
-
 
 def obstimes_array(s_obstime, t_obstime, r_obstime):
     num_samples = int(t_obstime / r_obstime) #number of samples
@@ -295,8 +294,8 @@ def luna_shift(apx, f_lower_LILA, f_final_LILA, mass1, mass2, delta_t, ra, dec,
     hp_LILA_delayed = hp_LILA_int(delayed_times)
     hc_LILA_delayed = hc_LILA_int(delayed_times)    
     if debug==1:
-        print("Original hp_LILA time range:", hp_LILA.sample_times[0], "to", hp_LILA.sample_times[-1])
-        print("Fixed delayed time range:", delayed_times[0], "to", delayed_times[-1])
+        print("original hp_LILA time range:", hp_LILA.sample_times[0], "to", hp_LILA.sample_times[-1])
+        print("fixed delayed time range:", delayed_times[0], "to", delayed_times[-1])
         print("hp_LILA_delayed first 10 values:", hp_LILA_delayed[:10])
         print("hp_LILA first 10 values:", hp_LILA[:10])
 
