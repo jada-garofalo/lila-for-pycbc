@@ -63,7 +63,7 @@ def set_mspole_location_eff(msp, obstimes):
     mcmf_xyz = location.mcmf.cartesian.xyz
     mcmf_skycoords = SkyCoord(mcmf_xyz.T, frame=MCMF(obstime=obstimes))
     barycentric_coords = mcmf_skycoords.transform_to(BarycentricTrueEcliptic(equinox=obstimes))
-    return barycentric_coords.cartesian.xyz  # Return barycentric positions as an array
+    return barycentric_coords.cartesian.xyz  #Return barycentric positions as an array
 
 def obstimes_array(s_obstime, t_obstime, r_obstime):
     num_samples = int(t_obstime / r_obstime) #number of samples
@@ -278,8 +278,8 @@ def luna_shift(apx, f_lower_LILA, f_final_LILA, mass1, mass2, delta_t, ra, dec,
     observation_times = obstimes_array(s_obstime, t_obstime, r_obstime)
     delays = time_delay_eff(observation_times, msp, ra, dec, frame)
 
-    hp_LILA_int = CubicSpline(hp_LILA.sample_times, hp_LILA, extrapolate=0)
-    hc_LILA_int = CubicSpline(hc_LILA.sample_times, hc_LILA, extrapolate=0)
+    hp_LILA_int = CubicSpline(hp_LILA.sample_times, hp_LILA, extrapolate=1)
+    hc_LILA_int = CubicSpline(hc_LILA.sample_times, hc_LILA, extrapolate=1)
 
     observation_times_float = observation_times.gps
     if debug==1:
@@ -301,6 +301,10 @@ def luna_shift(apx, f_lower_LILA, f_final_LILA, mass1, mass2, delta_t, ra, dec,
 
     return hp_LILA_delayed, hc_LILA_delayed, hp_LILA, hc_LILA, delayed_times
 
+'''
+BELOW IS A TEST RUN.
+'''
+
 apx = "TaylorF2"
 f_lower_LILA = 1
 f_final_LILA = 10
@@ -319,3 +323,19 @@ hp_LILA_delayed, hc_LILA_delayed, hp_LILA, hc_LILA, delayed_times = luna_shift(
            inclination=inclination, start_time=start_time, debug=1
 )
 
+from pycbc.types import TimeSeries
+
+hp_LILA_delayed_ts = TimeSeries(hp_LILA_delayed, delta_t=delta_t, epoch=hp_LILA.start_time)
+hc_LILA_delayed_ts = TimeSeries(hc_LILA_delayed, delta_t=delta_t, epoch=hp_LILA.start_time)
+
+t = 0
+while t<10:
+    t = t + 1
+    hp_LILA_delayed_ts = hp_LILA_delayed_ts[:-1]
+    hp_LILA = hp_LILA[:-1]
+    print(hp_LILA_delayed, hp_LILA_delayed_ts)
+    print(hp_LILA, hp_LILA_delayed_ts)
+    m = match(hp_LILA, hp_LILA_delayed_ts, low_frequency_cutoff=1.0)
+    print("Match", m)
+    if t>10:
+        break
