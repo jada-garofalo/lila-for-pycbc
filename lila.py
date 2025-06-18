@@ -4,6 +4,7 @@ from pycbc.detector import add_detector_on_earth, Detector
 from pycbc.distributions.utils import draw_samples_from_config
 from pycbc.filter import matched_filter, sigma, resample_to_delta_t, highpass, match
 from pycbc.psd import from_txt
+from pycbc.types import TimeSeries
 from pycbc.waveform import get_fd_waveform, get_td_waveform, get_td_waveform_from_fd
 from pycbc.waveform.spa_tmplt import findchirp_chirptime
 from lunarsky import MoonLocation, MCMF
@@ -278,8 +279,8 @@ def luna_shift(apx, f_lower_LILA, f_final_LILA, mass1, mass2, delta_t, ra, dec,
     observation_times = obstimes_array(s_obstime, t_obstime, r_obstime)
     delays = time_delay_eff(observation_times, msp, ra, dec, frame)
 
-    hp_LILA_int = CubicSpline(hp_LILA.sample_times, hp_LILA, extrapolate=1)
-    hc_LILA_int = CubicSpline(hc_LILA.sample_times, hc_LILA, extrapolate=1)
+    hp_LILA_int = CubicSpline(hp_LILA.sample_times, hp_LILA, extrapolate=0)
+    hc_LILA_int = CubicSpline(hc_LILA.sample_times, hc_LILA, extrapolate=0)
 
     observation_times_float = observation_times.gps
     if debug==1:
@@ -292,7 +293,10 @@ def luna_shift(apx, f_lower_LILA, f_final_LILA, mass1, mass2, delta_t, ra, dec,
     delayed_times = delayed_times_raw - delayed_times_raw[0] + hp_LILA.sample_times[0]
 
     hp_LILA_delayed = hp_LILA_int(delayed_times)
-    hc_LILA_delayed = hc_LILA_int(delayed_times)    
+    hc_LILA_delayed = hc_LILA_int(delayed_times)  
+    hp_LILA_delayed = TimeSeries(hp_LILA_delayed, delta_t=delta_t, epoch=hp_LILA.start_time)
+    hc_LILA_delayed = TimeSeries(hc_LILA_delayed, delta_t=delta_t, epoch=hp_LILA.start_time)
+
     if debug==1:
         print("original hp_LILA time range:", hp_LILA.sample_times[0], "to", hp_LILA.sample_times[-1])
         print("fixed delayed time range:", delayed_times[0], "to", delayed_times[-1])
@@ -311,31 +315,25 @@ f_final_LILA = 10
 mass1 = 1.4
 mass2 = 1.4
 delta_t = 1/32.0
-ra = 20 * u.deg
-dec = 10 * u.deg
+#ra = 20 * u.deg
+#dec = 10 * u.deg
 distance = 200
 inclination = 0.5
 start_time = Time('2004-06-25 01:50:30')
 
-hp_LILA_delayed, hc_LILA_delayed, hp_LILA, hc_LILA, delayed_times = luna_shift(
-    apx=apx, f_lower_LILA=f_lower_LILA, f_final_LILA=f_final_LILA, mass1=mass1,
-           mass2=mass2, delta_t=delta_t, ra=ra, dec=dec, distance=distance,
-           inclination=inclination, start_time=start_time, debug=1
-)
+results = np.empty((0,4))
+for n in [1.0, 2.0, 3.0]:
+    for i in np.arange(0, 6.2, 0.2):
+        ra = i * (180 / np.pi) * u.deg
+        for j in np.arange(-1.5, 1.5, 0.5):
+            dec = j * (180 / np.pi) * u.deg
+            hp_LILA_delayed, hc_LILA_delayed, hp_LILA, hc_LILA, delayed_times = luna_shift(
+                apx=apx, f_lower_LILA=f_lower_LILA, f_final_LILA=f_final_LILA, mass1=mass1,
+                       mass2=mass2, delta_t=delta_t, ra=ra, dec=dec, distance=distance,
+                       inclination=inclination, start_time=start_time, debug=0
+            )
+            match_val = match(hp_LILA[:-100000], hp_LILA_delayed[:-100000], low_frequency_cutoff=n)
+            new_row = np.array([[float(ra.value), float(dec.value), match_val[0], float(n)]])
+            results = np.vstack((results, new_row))
+            print(new_row)
 
-from pycbc.types import TimeSeries
-
-hp_LILA_delayed_ts = TimeSeries(hp_LILA_delayed, delta_t=delta_t, epoch=hp_LILA.start_time)
-hc_LILA_delayed_ts = TimeSeries(hc_LILA_delayed, delta_t=delta_t, epoch=hp_LILA.start_time)
-
-t = 0
-while t<10:
-    t = t + 1
-    hp_LILA_delayed_ts = hp_LILA_delayed_ts[:-1]
-    hp_LILA = hp_LILA[:-1]
-    print(hp_LILA_delayed, hp_LILA_delayed_ts)
-    print(hp_LILA, hp_LILA_delayed_ts)
-    m = match(hp_LILA, hp_LILA_delayed_ts, low_frequency_cutoff=1.0)
-    print("Match", m)
-    if t>10:
-        break
