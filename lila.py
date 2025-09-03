@@ -187,6 +187,98 @@ def luna_shift(apx, f_lower_LILA, f_final_LILA, mass1, mass2, delta_t, ra, dec,
 
     return hp_LILA_delayed, hc_LILA_delayed, hp_LILA_aligned, hc_LILA_aligned
 
+def single_arm_frequency_response(f, n, arm_length):
+    n = np.clip(n, -0.999, 0.999)
+    phase = arm_length / constants.c.value * 2.0j * np.pi * f
+    a = 1.0 / 4.0 / phase
+    b = (1 - np.exp(-phase * (1 - n))) / (1 - n)
+    c = np.exp(-2.0 * phase) * (1 - np.exp(phase * (1 + n))) / (1 + n)
+    return a * (b - c) * 2.0
+
+def antenna_pattern(self, ra, dec, polarization, obstime,
+                        frequency=0,
+                        polarization_type='tensor'):
+
+        t_gps = obstime.gps
+        if isinstance(t_gps, lal.LIGOTimeGPS):
+            t_gps = float(t_gps)
+        gha = self.gmst_moon(t_gps)
+
+        cosgha = np.cos(gha)
+        singha = np.sin(gha)
+        cosdec = np.cos(dec)
+        sindec = np.sin(dec)
+        cospsi = np.cos(polarization)
+        sinpsi = np.sin(polarization)
+
+        if frequency:
+            e0 = cosdec * cosgha
+            e1 = cosdec * -singha
+            e2 = np.sin(dec)
+            nhat = np.array([e0, e1, e2], dtype=object)
+
+            nx = nhat.dot(self.info['xvec'])
+            ny = nhat.dot(self.info['yvec'])
+
+            rx = single_arm_frequency_response(frequency, nx,
+                                               self.info['xlength'])
+            ry = single_arm_frequency_response(frequency, ny,
+                                               self.info['ylength'])
+            resp = ry * self.info['yresp'] -  rx * self.info['xresp']
+            ttype = np.complex128
+        else:
+            resp = self.response
+            ttype = np.float64
+
+        x0 = -cospsi * singha - sinpsi * cosgha * sindec
+        x1 = -cospsi * cosgha + sinpsi * singha * sindec
+        x2 =  sinpsi * cosdec
+
+        x = np.array([x0, x1, x2], dtype=object)
+        dx = resp.dot(x)
+
+        y0 =  sinpsi * singha - cospsi * cosgha * sindec
+        y1 =  sinpsi * cosgha + cospsi * singha * sindec
+        y2 =  cospsi * cosdec
+
+        y = np.array([y0, y1, y2], dtype=object)
+        dy = resp.dot(y)
+
+        if polarization_type != 'tensor':
+            z0 = -cosdec * cosgha
+            z1 = cosdec * singha
+            z2 = -sindec
+            z = np.array([z0, z1, z2], dtype=object)
+            dz = resp.dot(z)
+
+        if polarization_type == 'tensor':
+            if hasattr(dx, 'shape'):
+                fplus = (x * dx - y * dy).sum(axis=0).astype(ttype)
+                fcross = (x * dy + y * dx).sum(axis=0).astype(ttype)
+            else:
+                fplus = (x * dx - y * dy).sum()
+                fcross = (x * dy + y * dx).sum()
+            return fplus, fcross
+
+        elif polarization_type == 'vector':
+            if hasattr(dx, 'shape'):
+                fx = (z * dx + x * dz).sum(axis=0).astype(ttype)
+                fy = (z * dy + y * dz).sum(axis=0).astype(ttype)
+            else:
+                fx = (z * dx + x * dz).sum()
+                fy = (z * dy + y * dz).sum()
+
+            return fx, fy
+
+        elif polarization_type == 'scalar':
+            if hasattr(dx, 'shape'):
+                fb = (x * dx + y * dy).sum(axis=0).astype(ttype)
+                fl = (z * dz).sum(axis=0)
+            else:
+                fb = (x * dx + y * dy).sum()
+                fl = (z * dz).sum()
+            return fb, fl
+
 '''
 BELOW ARE SOME TESTS
 '''
@@ -248,31 +340,34 @@ dec_vals = np.arange(-80, 80, 5)
 ra_vals = np.arange(10, 350, 5)
 flows = np.arange(4, 12, 4)
 
-for flow in flows:
-    tally = 0
-    match_map = np.zeros((len(dec_vals), len(ra_vals)))
-    for i, RA in enumerate(ra_vals):
-        for j, DEC in enumerate(dec_vals):
-            hp_del, hc_del, hp_ali, hc_ali = luna_shift(
-                apx=apx, f_lower_LILA=flow, f_final_LILA=fhigh,
-                mass1=mass1, mass2=mass2, delta_t=delta_t,
-                ra=RA, dec=DEC, distance=distance,
-                inclination=inclination, start_time=start_time, debug=False)
-            mval = match(hp_ali, hp_del)[0]
-            tally = tally + 1
-            print(tally, "/2176")
-            match_map[j, i] = float(mval)
+test_plot = 0
 
-    RA_grid, DEC_grid = np.meshgrid(ra_vals, dec_vals)
-    RA_rad = np.radians(RA_grid)
-    DEC_rad = np.radians(DEC_grid)
-    RA_rad_shifted = -(RA_rad - np.pi)
+if test_plot = 1:
+    for flow in flows:
+        tally = 0
+        match_map = np.zeros((len(dec_vals), len(ra_vals)))
+        for i, RA in enumerate(ra_vals):
+            for j, DEC in enumerate(dec_vals):
+                hp_del, hc_del, hp_ali, hc_ali = luna_shift(
+                    apx=apx, f_lower_LILA=flow, f_final_LILA=fhigh,
+                    mass1=mass1, mass2=mass2, delta_t=delta_t,
+                    ra=RA, dec=DEC, distance=distance,
+                    inclination=inclination, start_time=start_time, debug=False)
+                mval = match(hp_ali, hp_del)[0]
+                tally = tally + 1
+                print(tally, "/2176")
+                match_map[j, i] = float(mval)
 
-    fig = plt.figure(figsize=(8, 5))
-    ax = fig.add_subplot(111, projection="mollweide")
-    im = ax.pcolormesh(RA_rad_shifted, DEC_rad, match_map, cmap='viridis', shading='auto')
-    ax.grid(True)
-    fig.colorbar(im, ax=ax, orientation='horizontal', pad=0.07, label="Match")
-    ax.set_title(f"Match vs Sky Location (flow={flow} Hz)")
-    plt.show()
+        RA_grid, DEC_grid = np.meshgrid(ra_vals, dec_vals)
+        RA_rad = np.radians(RA_grid)
+        DEC_rad = np.radians(DEC_grid)
+        RA_rad_shifted = -(RA_rad - np.pi)
+
+        fig = plt.figure(figsize=(8, 5))
+        ax = fig.add_subplot(111, projection="mollweide")
+        im = ax.pcolormesh(RA_rad_shifted, DEC_rad, match_map, cmap='viridis', shading='auto')
+        ax.grid(True)
+        fig.colorbar(im, ax=ax, orientation='horizontal', pad=0.07, label="Match")
+        ax.set_title(f"Match vs Sky Location (flow={flow} Hz)")
+        plt.show()
 
