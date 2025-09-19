@@ -25,28 +25,49 @@ from pycbc.waveform.spa_tmplt import findchirp_chirptime
 from scipy.interpolate import interp1d, CubicSpline
 from lunarsky import MoonLocation, MCMF
 
-class MoonSurfacePoint: #calls position on the lunar surface
+class MoonSurfacePoint:
+    '''
+    Creates a point on the lunar surface to track
+    '''
     def __init__(self, lunar_det_lat, lunar_det_lon, lunar_det_h):
-        '''
-        generates instance of a lunar object to track
-
-        args:
-        lunar_det_lat, lunar_det_lon: latitude and longitude in selenodetic coordinates
-        expects singleton array with scalar value, assumed in radians
-        lunar_det_h: height above the lunar surface, meters, expects ordinary scalar
-        '''
         self.lat = Latitude(lunar_det_lat * u.rad)
         self.lon = Longitude(lunar_det_lon * u.rad)
         self.h = lunar_det_h * u.m
 
 def gmst_moon(obstime, s_obstime):
-    lunar_sidereal_period = 27.321661 * 86400  #seconds in a sidereal lunar day
+    '''
+    Returns GMST rotation evolution in radians for the moon
+
+    Params
+    ------
+    obstime: current observation time
+    s_obstime: starting observation time
+
+    Returns
+    ------
+    gmst_moon * u.rad: GMST angle evolved since start time, in radians
+    '''
+    lunar_sidereal_period = 27.321661 * 86400
     time_utc = Time(obstime, format='gps', scale='utc')
     elapsed_time = (time_utc - s_obstime).to_value('s')
     gmst_moon = 2 * np.pi * (elapsed_time % lunar_sidereal_period) / lunar_sidereal_period
     return gmst_moon * u.rad
 
 def set_mspole_location_eff(msp, obstimes):
+    '''
+    Returns MoonSurfacePoint location in solar system barycentric coordinates over a set
+    collection of observation times
+
+    Params
+    ------
+    msp: MoonSurfacePoint to track
+    obstimes: Array of observation times
+
+    Returns
+    ------
+    xyz_q.to(u.m): Array of barycentric coordinate positions (in meters) of the
+    Moon for given observation times
+    '''
     location = MoonLocation.from_selenodetic(msp.lon, msp.lat, msp.h)
     mcmf_xyz = location.mcmf.cartesian.xyz
     mcmf_skycoords = SkyCoord(mcmf_xyz.T, frame=MCMF(obstime=obstimes))
@@ -55,6 +76,23 @@ def set_mspole_location_eff(msp, obstimes):
     return xyz_q.to(u.m)
 
 def time_delay_eff(observation_times, msp, ra, dec, frame='icrs', debug=False): 
+    '''
+    Returns array of time delays for amount of time it takes light to travel from the solar system barycenter
+    to the chosen MoonSurfacePoint across an array of observation times
+
+    Params
+    ------
+    observation_times: Array of observation times to compute delays for
+    msp: MoonSurfacePoint to track
+    ra: Right ascension of GW source
+    dec: Declination of GW source
+    frame: Reference coordinate frame, defaults to ICRS
+    debug: Verbose debug prints, defaults to False
+
+    Returns
+    ------
+    delays.to(u.s): Array of light delay times found for each observation time
+    '''
     if not isinstance(ra, u.Quantity):
         ra = ra * u.deg
     if not isinstance(dec, u.Quantity):
@@ -74,15 +112,14 @@ def time_delay_eff(observation_times, msp, ra, dec, frame='icrs', debug=False):
     if moon_positions_m.shape[0] != 3 and moon_positions_m.shape[-1] == 3:
         moon_positions_m = moon_positions_m.T
 
-    k_arr = k_vec.to_value(u.dimensionless_unscaled) #numpy array shape (3,)
-    r_arr = moon_positions_m.to_value(u.m) #numpy array shape (3, N)
-    proj_m = np.einsum('i...,i...->...', k_arr, r_arr) #projection in meters (numpy array length N)
+    k_arr = k_vec.to_value(u.dimensionless_unscaled)
+    r_arr = moon_positions_m.to_value(u.m)
+    proj_m = np.einsum('i...,i...->...', k_arr, r_arr)
     proj_m_q = proj_m * u.m
 
     delays = proj_m_q / constants.c.to(u.m / u.s)
 
     if debug:
-        #print first few values and units for sanity
         print("k (propagation vector, source->SSB):", k_arr)
         print("moon_positions_m[:, :5] (m):", r_arr[:, :5])
         print("proj_m[:5] (m):", proj_m[:5])
@@ -91,6 +128,25 @@ def time_delay_eff(observation_times, msp, ra, dec, frame='icrs', debug=False):
 def add_detector_on_moon(name, longitude, latitude,
                           yangle=0, xangle=None, height=0,
                           xlength=10000, ylength=10000,xaltitude=0, yaltitude=0):
+    '''
+    Constructs a two-arm GW detector for an identified location on the lunar surface
+
+    Params
+    ------
+    name: Chosen detector name
+    longitude: Longitude of detector, can be taken from MoonSurfacePoint attribute
+    latitude: Latitude of detector, can be taken from MoonSurfacePoint attribute
+    yangle: Angle at which the y-arm of the detector rests, defaults to 0
+    xangle: Angle at which the x-arm of the detector rests, defaults to 90 degrees past yangle (right angle detector)
+    xlength: Length of x-arm, defaults to 10000m
+    ylength: Length of y-aarm, defaults to 10000m
+    xaltitude: Altitude of x-arm, defaults to 0m
+    yaltitude: Altitude of y-arm, defaults to 0m
+
+    Returns
+    ------
+    _lunar_detectors: Dictionary containing defined detector
+    '''
     _lunar_detectors = {}
     if xangle is None:
             #assume right angle detector if no separate xarm direction given
@@ -131,10 +187,55 @@ def add_detector_on_moon(name, longitude, latitude,
                                 'ylength': ylength,
                                 'xlength': xlength,
                                 }
+    return _lunar_detectors
+
+class LunarDetector:
+    '''
+    Wrapper for detector dict information and squeezed response
+    '''
+    def __init__(self, detdict, s_obstime):
+        self.info = detdict
+        self.response = np.squeeze(detdict['response'])
+        self.s_obstime = s_obstime
+    def gmst_moon(self, obstime):
+        return gmst_moon(obstime, self.s_obstime)
 
 def luna_shift(apx, f_lower_LILA, f_final_LILA, mass1, mass2, delta_t, ra, dec, 
                distance, inclination, start_time, lunar_det_lat=[-(np.pi/2)],
                lunar_det_lon=[0], lunar_det_h=0, frame='icrs', debug=False):
+    '''
+    Generates a waveform as defined by the user, and then applies a time delay shift to said waveform based on
+    a given observation period and lunar detector information
+
+    Params
+    ------
+    apx: Waveform approximant
+    f_lower_LILA: Lower frequency bound for waveform generation
+    f_final_LILA: Upper frequency bound for waveform generation
+    mass1: Mass of first body for waveform generation
+    mass2: Mass of second body for waveform generation
+    delta_t: Sample rate for time domain waveform
+    ra: Right ascension of GW source
+    dec: Declination of GW source
+    distance: Distance of source (Mpc)
+    inclination: Inclination of source
+    start_time: Starting time of observation period
+    lunar_det_lat: Latitude of lunar detector, defaults to South pole
+    lunar_det_lon: Longitude of lunar detector, defaults to South pole
+    frame: Reference coordinate frame, defaults to ICRS
+    debug: Verbose debug prints, defaults to False
+
+    Returns
+    ------
+
+    hp_LILA_delayed: Delayed h_plus time series
+    hc_LILA_delayed: Delayed h_cross time series
+    hp_LILA_aligned: Undelayed h_plus time series
+    hc_LILA_aligned: Undelayed h_cross time series
+    _lunar_detectors: Lunar detector dictionary (needed for antenna response calculation)
+
+    Note: named after Jada's cat, Luna >^^<
+    '''
 
     hp_LILA, hc_LILA = get_td_waveform(approximant=apx, mass1=mass1,
                                                 mass2=mass2, f_lower=f_lower_LILA,
@@ -142,7 +243,7 @@ def luna_shift(apx, f_lower_LILA, f_final_LILA, mass1, mass2, delta_t, ra, dec,
                                                 inclination=inclination, distance=distance)
     
     msp = MoonSurfacePoint(lunar_det_lat, lunar_det_lon, lunar_det_h)
-    add_detector_on_moon("LILA", msp.lon, msp.lat)
+    _lunar_detectors = add_detector_on_moon("LILA", msp.lon, msp.lat)
 
     t_det = np.asarray(hp_LILA.sample_times)
     t0 = t_det[0]
@@ -160,7 +261,7 @@ def luna_shift(apx, f_lower_LILA, f_final_LILA, mass1, mass2, delta_t, ra, dec,
 
     valid = (t_ssb >= t_min) & (t_ssb <= t_max)
     if not np.any(valid):
-        raise RuntimeError("No overlap after applying delays. "
+        raise RuntimeError("No overlap after applying delays."
                            "Increase waveform duration or choose a different start_time.")
     
     hp_int = CubicSpline(t_det, np.asarray(hp_LILA), extrapolate=False)
@@ -185,9 +286,12 @@ def luna_shift(apx, f_lower_LILA, f_final_LILA, mass1, mass2, delta_t, ra, dec,
         print(f"Delayed t range (kept): [{t_ssb[valid][0]:.6f}, {t_ssb[valid][-1]:.6f}] s")
         print(f"Overlap points: {np.count_nonzero(valid)}/{len(valid)}")
 
-    return hp_LILA_delayed, hc_LILA_delayed, hp_LILA_aligned, hc_LILA_aligned
+    return hp_LILA_delayed, hc_LILA_delayed, hp_LILA_aligned, hc_LILA_aligned, _lunar_detectors
 
-def single_arm_frequency_response(f, n, arm_length):
+def single_arm_frequency_response_alt(f, n, arm_length):
+    '''
+    Same as in pycbc.detector
+    '''
     n = np.clip(n, -0.999, 0.999)
     phase = arm_length / constants.c.value * 2.0j * np.pi * f
     a = 1.0 / 4.0 / phase
@@ -195,10 +299,13 @@ def single_arm_frequency_response(f, n, arm_length):
     c = np.exp(-2.0 * phase) * (1 - np.exp(phase * (1 + n))) / (1 + n)
     return a * (b - c) * 2.0
 
-def antenna_pattern(self, ra, dec, polarization, obstime,
+def antenna_pattern_alt(self, ra, dec, polarization, obstime,
                         frequency=0,
                         polarization_type='tensor'):
-
+    '''
+    Same as in pycbc.detector, except with added obstime (observation time) param
+    to find orientation angle as the Moon rotates over the observation period
+    '''
         t_gps = obstime.gps
         if isinstance(t_gps, lal.LIGOTimeGPS):
             t_gps = float(t_gps)
@@ -220,9 +327,9 @@ def antenna_pattern(self, ra, dec, polarization, obstime,
             nx = nhat.dot(self.info['xvec'])
             ny = nhat.dot(self.info['yvec'])
 
-            rx = single_arm_frequency_response(frequency, nx,
+            rx = single_arm_frequency_response_alt(frequency, nx,
                                                self.info['xlength'])
-            ry = single_arm_frequency_response(frequency, ny,
+            ry = single_arm_frequency_response_alt(frequency, ny,
                                                self.info['ylength'])
             resp = ry * self.info['yresp'] -  rx * self.info['xresp']
             ttype = np.complex128
@@ -279,9 +386,104 @@ def antenna_pattern(self, ra, dec, polarization, obstime,
                 fl = (z * dz).sum()
             return fb, fl
 
+def time_dependent_strain(detector, hp, hc, ra, dec, polarization, debug=False):
+    '''
+    Returns strain for given delayed waveform and detector configuration
+    Intended use is after a run of luna_shift()
+    '''
+    fp_t = []
+    fc_t = []
+    for t in hp.sample_times:
+        obstime = Time(float(hp.start_time + t), format='gps', scale='utc')
+        fp_i, fc_i = antenna_pattern_alt(detector,
+                                     ra=ra,
+                                     dec=dec,
+                                     polarization=polarization,
+                                     obstime=obstime)
+        fp_t.append(fp_i)
+        fc_t.append(fc_i)
+        if debug:
+            print("tick",t)
+    fp_t = np.array(fp_t)
+    fc_t = np.array(fc_t)
+    return fp_t * hp + fc_t * hc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 '''
 BELOW ARE SOME TESTS
 '''
+
+def quick():
+    ra_test = 120.0
+    dec_test = -30.0
+    psi_test = 0.0 * u.rad
+    start_time = Time("2015-03-17 08:50:00", scale="utc")
+
+    apx = "TaylorF2"
+    f_low = 4
+    f_high = 10
+    mass1 = 1.4
+    mass2 = 1.4
+    delta_t = 1/32.0
+    distance = 200
+    inclination = 0.5
+
+    hp_del, hc_del, hp_ali, hc_ali, dets = luna_shift(
+        apx=apx, f_lower_LILA=f_low, f_final_LILA=f_high,
+        mass1=mass1, mass2=mass2, delta_t=delta_t,
+        ra=ra_test, dec=dec_test, distance=distance,
+        inclination=inclination, start_time=start_time, debug=False
+    )
+
+    LILA = LunarDetector(dets['LILA'], start_time)
+
+    ht = time_dependent_strain(LILA, hp_del, hc_del, ra_test, dec_test, psi_test)
+
+    strain_ts = TimeSeries(ht, delta_t=delta_t, epoch=hp_del.start_time)
+
+    plt.figure(figsize=(10,5))
+    plt.plot(hp_del.sample_times, hp_del, label="hp (delayed)")
+    plt.plot(hc_del.sample_times, hc_del, label="hc (delayed)")
+    plt.plot(strain_ts.sample_times, strain_ts, label="Strain (detector)")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude")
+    plt.legend()
+    plt.title("Example Projection of Waveform to Lunar Detector Strain")
+    plt.show()
+
+quick()
+
+
+
+
+'''
+
+
+###BELOW IS TEST FOR SPANNING SKY LOC AND MATCH CALCULATION###
+
+
 
 def ra_dec_for_ecliptic_pole_and_inplane(start_time): 
     if not isinstance(start_time, Time):
@@ -342,13 +544,13 @@ flows = np.arange(4, 12, 4)
 
 test_plot = 0
 
-if test_plot = 1:
+if test_plot == 1:
     for flow in flows:
         tally = 0
         match_map = np.zeros((len(dec_vals), len(ra_vals)))
         for i, RA in enumerate(ra_vals):
             for j, DEC in enumerate(dec_vals):
-                hp_del, hc_del, hp_ali, hc_ali = luna_shift(
+                hp_del, hc_del, hp_ali, hc_ali, det = luna_shift(
                     apx=apx, f_lower_LILA=flow, f_final_LILA=fhigh,
                     mass1=mass1, mass2=mass2, delta_t=delta_t,
                     ra=RA, dec=DEC, distance=distance,
@@ -371,3 +573,4 @@ if test_plot = 1:
         ax.set_title(f"Match vs Sky Location (flow={flow} Hz)")
         plt.show()
 
+'''
