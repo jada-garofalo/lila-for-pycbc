@@ -306,87 +306,87 @@ def antenna_pattern_alt(self, ra, dec, polarization, obstime,
     Same as in pycbc.detector, except with added obstime (observation time) param
     to find orientation angle as the Moon rotates over the observation period
     '''
-        t_gps = obstime.gps
-        if isinstance(t_gps, lal.LIGOTimeGPS):
-            t_gps = float(t_gps)
-        gha = self.gmst_moon(t_gps)
+    t_gps = obstime.gps
+    if isinstance(t_gps, lal.LIGOTimeGPS):
+        t_gps = float(t_gps)
+    gha = self.gmst_moon(t_gps)
 
-        cosgha = np.cos(gha)
-        singha = np.sin(gha)
-        cosdec = np.cos(dec)
-        sindec = np.sin(dec)
-        cospsi = np.cos(polarization)
-        sinpsi = np.sin(polarization)
+    cosgha = np.cos(gha)
+    singha = np.sin(gha)
+    cosdec = np.cos(dec)
+    sindec = np.sin(dec)
+    cospsi = np.cos(polarization)
+    sinpsi = np.sin(polarization)
 
-        if frequency:
-            e0 = cosdec * cosgha
-            e1 = cosdec * -singha
-            e2 = np.sin(dec)
-            nhat = np.array([e0, e1, e2], dtype=object)
+    if frequency:
+        e0 = cosdec * cosgha
+        e1 = cosdec * -singha
+        e2 = np.sin(dec)
+        nhat = np.array([e0, e1, e2], dtype=object)
 
-            nx = nhat.dot(self.info['xvec'])
-            ny = nhat.dot(self.info['yvec'])
+        nx = nhat.dot(self.info['xvec'])
+        ny = nhat.dot(self.info['yvec'])
 
-            rx = single_arm_frequency_response_alt(frequency, nx,
-                                               self.info['xlength'])
-            ry = single_arm_frequency_response_alt(frequency, ny,
-                                               self.info['ylength'])
-            resp = ry * self.info['yresp'] -  rx * self.info['xresp']
-            ttype = np.complex128
+        rx = single_arm_frequency_response_alt(frequency, nx,
+                                           self.info['xlength'])
+        ry = single_arm_frequency_response_alt(frequency, ny,
+                                           self.info['ylength'])
+        resp = ry * self.info['yresp'] -  rx * self.info['xresp']
+        ttype = np.complex128
+    else:
+        resp = self.response
+        ttype = np.float64
+
+    x0 = -cospsi * singha - sinpsi * cosgha * sindec
+    x1 = -cospsi * cosgha + sinpsi * singha * sindec
+    x2 =  sinpsi * cosdec
+
+    x = np.array([x0, x1, x2], dtype=object)
+    dx = resp.dot(x)
+
+    y0 =  sinpsi * singha - cospsi * cosgha * sindec
+    y1 =  sinpsi * cosgha + cospsi * singha * sindec
+    y2 =  cospsi * cosdec
+
+    y = np.array([y0, y1, y2], dtype=object)
+    dy = resp.dot(y)
+
+    if polarization_type != 'tensor':
+        z0 = -cosdec * cosgha
+        z1 = cosdec * singha
+        z2 = -sindec
+        z = np.array([z0, z1, z2], dtype=object)
+        dz = resp.dot(z)
+
+    if polarization_type == 'tensor':
+        if hasattr(dx, 'shape'):
+            fplus = (x * dx - y * dy).sum(axis=0).astype(ttype)
+            fcross = (x * dy + y * dx).sum(axis=0).astype(ttype)
         else:
-            resp = self.response
-            ttype = np.float64
+            fplus = (x * dx - y * dy).sum()
+            fcross = (x * dy + y * dx).sum()
+        return fplus, fcross
 
-        x0 = -cospsi * singha - sinpsi * cosgha * sindec
-        x1 = -cospsi * cosgha + sinpsi * singha * sindec
-        x2 =  sinpsi * cosdec
+    elif polarization_type == 'vector':
+        if hasattr(dx, 'shape'):
+            fx = (z * dx + x * dz).sum(axis=0).astype(ttype)
+            fy = (z * dy + y * dz).sum(axis=0).astype(ttype)
+        else:
+            fx = (z * dx + x * dz).sum()
+            fy = (z * dy + y * dz).sum()
 
-        x = np.array([x0, x1, x2], dtype=object)
-        dx = resp.dot(x)
+        return fx, fy
 
-        y0 =  sinpsi * singha - cospsi * cosgha * sindec
-        y1 =  sinpsi * cosgha + cospsi * singha * sindec
-        y2 =  cospsi * cosdec
+    elif polarization_type == 'scalar':
+        if hasattr(dx, 'shape'):
+            fb = (x * dx + y * dy).sum(axis=0).astype(ttype)
+            fl = (z * dz).sum(axis=0)
+        else:
+            fb = (x * dx + y * dy).sum()
+            fl = (z * dz).sum()
+        return fb, fl
 
-        y = np.array([y0, y1, y2], dtype=object)
-        dy = resp.dot(y)
-
-        if polarization_type != 'tensor':
-            z0 = -cosdec * cosgha
-            z1 = cosdec * singha
-            z2 = -sindec
-            z = np.array([z0, z1, z2], dtype=object)
-            dz = resp.dot(z)
-
-        if polarization_type == 'tensor':
-            if hasattr(dx, 'shape'):
-                fplus = (x * dx - y * dy).sum(axis=0).astype(ttype)
-                fcross = (x * dy + y * dx).sum(axis=0).astype(ttype)
-            else:
-                fplus = (x * dx - y * dy).sum()
-                fcross = (x * dy + y * dx).sum()
-            return fplus, fcross
-
-        elif polarization_type == 'vector':
-            if hasattr(dx, 'shape'):
-                fx = (z * dx + x * dz).sum(axis=0).astype(ttype)
-                fy = (z * dy + y * dz).sum(axis=0).astype(ttype)
-            else:
-                fx = (z * dx + x * dz).sum()
-                fy = (z * dy + y * dz).sum()
-
-            return fx, fy
-
-        elif polarization_type == 'scalar':
-            if hasattr(dx, 'shape'):
-                fb = (x * dx + y * dy).sum(axis=0).astype(ttype)
-                fl = (z * dz).sum(axis=0)
-            else:
-                fb = (x * dx + y * dy).sum()
-                fl = (z * dz).sum()
-            return fb, fl
-
-def time_dependent_strain(detector, hp, hc, ra, dec, polarization, debug=False):
+def time_dependent_strain(detector, hp, hc, ra, dec, polarization):
     '''
     Returns strain for given delayed waveform and detector configuration
     Intended use is after a run of luna_shift()
@@ -402,8 +402,6 @@ def time_dependent_strain(detector, hp, hc, ra, dec, polarization, debug=False):
                                      obstime=obstime)
         fp_t.append(fp_i)
         fc_t.append(fc_i)
-        if debug:
-            print("tick",t)
     fp_t = np.array(fp_t)
     fc_t = np.array(fc_t)
     return fp_t * hp + fc_t * hc
