@@ -25,6 +25,7 @@ from pycbc.waveform.spa_tmplt import findchirp_chirptime
 from scipy.interpolate import interp1d, CubicSpline
 from lunarsky import MoonLocation, MCMF
 
+
 class MoonSurfacePoint:
     '''
     Creates a point on the lunar surface to track
@@ -45,6 +46,7 @@ class LunarDetector:
         self.s_obstime = s_obstime
     def gmst_moon(self, obstime):
         return gmst_moon(obstime, self.s_obstime)
+
 
 class luna_push:
     def __init__(self, lunar_det_lat=[-(np.pi/2)], lunar_det_lon=[0], lunar_det_h=0):
@@ -413,5 +415,4 @@ class luna_push:
         fp_t = np.array(fp_t)
         fc_t = np.array(fc_t)
         return fp_t * hp + fc_t * hc
-
 
