@@ -4,6 +4,10 @@ import matplotlib.pyplot as plt
 from astropy.time import Time
 from pycbc.filter import match
 
+#############################################
+#       EXAMPLE USE CASE OF LUNA_PUSH       #
+#############################################
+
 lp = lp.luna_push()
 
 start_time = Time('2015-03-17 08:50:00', scale='utc')
@@ -16,7 +20,7 @@ inclination = 0.5
 
 dec_vals = np.arange(-80, 80, 5)
 ra_vals = np.arange(10, 350, 5)
-flows = np.arange(8, 12, 4)
+flows = np.arange(4, 12, 4)
 
 for flow in flows:
     tally = 0
